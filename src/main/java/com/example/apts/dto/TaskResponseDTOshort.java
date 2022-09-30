@@ -1,7 +1,7 @@
 package com.example.apts.dto;
 
-import com.example.apts.entity.TaskStatus;
-import com.example.apts.entity.TaskType;
+import com.example.apts.entity.type.TaskStatus;
+import com.example.apts.entity.type.TaskType;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

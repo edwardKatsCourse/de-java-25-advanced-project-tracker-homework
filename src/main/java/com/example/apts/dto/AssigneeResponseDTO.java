@@ -1,6 +1,6 @@
 package com.example.apts.dto;
 
-import com.example.apts.entity.AccountStatus;
+import com.example.apts.entity.type.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;

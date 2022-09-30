@@ -3,10 +3,9 @@ package com.example.apts.service.impl;
 import com.example.apts.dto.TaskRequestDTO;
 import com.example.apts.dto.TaskResponseDTO;
 import com.example.apts.dto.TaskResponseDTOshort;
-import com.example.apts.entity.Assignee;
-import com.example.apts.entity.TaskItem;
-import com.example.apts.entity.TaskStatus;
-import com.example.apts.entity.TaskType;
+import com.example.apts.entity.*;
+import com.example.apts.entity.type.AccountStatus;
+import com.example.apts.entity.type.TaskStatus;
 import com.example.apts.repository.AssigneeRepository;
 import com.example.apts.repository.TaskRepository;
 import com.example.apts.service.TaskService;
@@ -24,43 +23,48 @@ public class TaskServiceImpl implements TaskService {
 
     private final TaskRepository taskRepository;
     private final AssigneeRepository assigneeRepository;
-    private final ConverterDTO converterDTO;
 
     public void createTask(TaskRequestDTO request) {
 
         Assignee assignee = request.getAssigneeId() == null
                 ? null
                 : assigneeRepository.findById(request.getAssigneeId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        String.format("Assignee with ID %s cannot be found", request.getAssigneeId())));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                String.format("Assignee with ID %s cannot be found", request.getAssigneeId())
+                        )
+                );
+
         var parentTask = request.getParentTaskId() == null
                 ? null
                 : taskRepository.findById(request.getParentTaskId())
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        String.format("Parent task with ID %s cannot be found", request.getParentTaskId())));
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                String.format("Parent task with ID %s cannot be found", request.getParentTaskId())
+                        )
+                );
 
-        if (assignee != null && assignee.getAccountStatus() != null) {
-            if (assignee.getAccountStatus()
-                    .getAccountStatusName()
-                    .equalsIgnoreCase("Inactive")) {
-                throw new ResponseStatusException(HttpStatus.PRECONDITION_FAILED,
-                        String.format("Assignee with ID %s is in status %s",
+        if (assignee != null) {
+            if (assignee.getAccountStatus() == AccountStatus.INACTIVE) {
+                throw new ResponseStatusException(
+                        HttpStatus.PRECONDITION_FAILED,
+                        String.format(
+                                "Assignee with ID %s is in status %s",
                                 request.getAssigneeId(),
-                                assignee.getAccountStatus().getAccountStatusName()));
+                                assignee.getAccountStatus().getAccountStatusName()
+                        )
+                );
             }
         }
 
         var task = TaskItem.builder()
                 .name(request.getName())
-                .assignee(assignee /*== null
-                        || assignee.getAccountStatus() == null
-                        || assignee.getAccountStatus()
-                        .getAccountStatusName()
-                        .equalsIgnoreCase("Inactive")
-                        ? null : assignee*/)
+                .assignee(assignee)
                 .parentTask(parentTask)
-                .taskType(TaskType.getTaskTypeByParent(parentTask))
-                .taskStatus(TaskStatus.getTaskStatusByName(null))
+                .taskType(parentTask.getTaskType().getChild())
+                .taskStatus(TaskStatus.TODO)
                 .build();
 
         taskRepository.save(task);
@@ -69,41 +73,56 @@ public class TaskServiceImpl implements TaskService {
     public List<TaskResponseDTOshort> findAllTasks() {
         return taskRepository.findAll()
                 .stream()
-                .map(converterDTO::convertTaskToDTOshort)
+                .map(ConverterDTO::convertTaskToDTOshort)
                 .toList();
     }
 
     public TaskResponseDTO findTaskById(Long taskId) {
         var task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        String.format("Task with ID %s cannot be found", taskId)));
-        return converterDTO.convertTaskToDTO(task);
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                String.format("Task with ID %s cannot be found", taskId)
+                        )
+                );
+        return ConverterDTO.convertTaskToDTO(task);
     }
 
     public void promoteTaskById(Long taskId) {
         var task = taskRepository.findById(taskId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
         task.setTaskStatus(task.getTaskStatus().getNextPhase());
-        if (task.getTaskStatus().getTaskStatusName().equalsIgnoreCase("Done")) {
-            var subTasks = taskRepository.findAllByParentTask(task);
+
+        if (task.getTaskStatus() == TaskStatus.DONE) {
+            var subTasks = task.getChildren();
             subTasks.forEach(t -> t.setTaskStatus(TaskStatus.DONE));
             taskRepository.saveAll(subTasks);
         }
+
         taskRepository.save(task);
     }
 
     public void demoteTaskById(Long taskId) {
-        var task = taskRepository.findById(taskId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        String.format("Task with ID %s cannot be found", taskId)));
-        boolean fromDone = task.getTaskStatus().getTaskStatusName().equalsIgnoreCase("Done");
+        var task = taskRepository
+                .findById(taskId)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                String.format("Task with ID %s cannot be found", taskId)
+                        )
+                );
+
+        boolean fromDone = task.getTaskStatus() == TaskStatus.DONE;
 
         var previous = task.getTaskStatus().getPreviousPhase();
         task.setTaskStatus(previous);
 
         if (fromDone) {
-            var subTasks = taskRepository.findAllByParentTask(task);
-            subTasks.forEach(t -> t.setTaskStatus(previous));
-            taskRepository.saveAll(subTasks);
+            taskRepository
+                    .findAllByParentTask(task)
+                    .stream()
+                    .peek(t -> t.setTaskStatus(previous))
+                    .forEach(taskRepository::save);
+
         }
 
         taskRepository.save(task);

@@ -1,5 +1,6 @@
 package com.example.apts.entity;
 
+import com.example.apts.entity.type.AccountStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,10 +23,10 @@ public class Assignee {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "name")
+    @Column(name = "name", nullable = false)
     private String name;
 
-    @Column(name = "account_status")
+    @Column(name = "account_status", nullable = false)
     private AccountStatus accountStatus;
 
     @OneToMany(mappedBy = "assignee")
